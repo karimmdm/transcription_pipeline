@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "transcription_pipeline"
+version = "0.1.0"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"  
+
+# Enable both linter and formatter
+lint.select = ["ALL"]  # or pick rulesets like ["E", "F", "I"]
+lint.ignore = ["D100", "D101"]  # ignore specific rules if needed
+
+[tool.ruff.format]
+docstring-code-format = true  # Format code blocks inside docstrings
+
+[tool.ruff.lint.isort]
+known-first-party = ["your_project"]  # name of your own package
