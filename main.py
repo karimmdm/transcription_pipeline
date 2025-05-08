@@ -1,11 +1,13 @@
 import logging
-import sys
+
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
+
 import paths
-from service.database import IDatabase, PostgresDatabase
-from service.downloader import SoundcloudDownloaderService, IDownloaderService
-from service.transcriber import ITranscriberService
-from sqlalchemy import create_engine, Engine
 from config import settings
+from service.database import IDatabase, PostgresDatabase
+from service.downloader import IDownloaderService, SoundcloudDownloaderService
+from service.transcriber import ITranscriberService, WhiserXTranscriberService
 
 
 def run(
@@ -16,13 +18,20 @@ def run(
 ):
     paths.init_tmp_paths()
 
-    logger.debug(f"Attempting to download playlist: {settings.PLAYLIST_URL}")
-    track_metadatas = downloader_service.get_playlist_tracks(settings.PLAYLIST_URL)
-
-    for track in track_metadatas[0:1]:
-        logger.debug(f"Processing track: {track.title} @ {track.webpage_url}")
-        track_downloaded = downloader_service.download_track(track, paths.AUDIO_DIR)
-        logger.debug(f"downloaded to {track_downloaded.audio_file_path}")
+    logger.debug(f"Attempting to download playlist: {settings.URL}")
+    if settings.IS_PLAYLIST:
+        track_metadatas = downloader_service.get_playlist_tracks_metadata(settings.URL)
+        for metadata in track_metadatas[0:1]:
+            logger.debug(f"Processing track: {metadata.title} @ {metadata.webpage_url}")
+            track_downloaded = downloader_service.download_track(metadata)
+            logger.debug(f"downloaded to {track_downloaded.audio_file_path}")
+    else:
+        track_metadata = downloader_service.get_track_metadata(settings.URL)
+        if track_metadata:
+            logger.debug(
+                f"Processing track: {track_metadata.title} @ {track_metadata.webpage_url}"
+            )
+            track_downloaded = downloader_service.download_track(track_metadata)
 
 
 if __name__ == "__main__":
@@ -37,9 +46,9 @@ if __name__ == "__main__":
     database_service: IDatabase = PostgresDatabase(db_engine)
     downloader_service: IDownloaderService = SoundcloudDownloaderService(
         database_service,
-        save_directory=paths.AUDIO_DIR
+        save_directory=paths.AUDIO_DIR,
     )
-    transcriber_service: ITranscriberService = ITranscriberService()
+    transcriber_service: ITranscriberService = WhiserXTranscriberService()
     run(
         logger=logger,
         database_service=database_service,

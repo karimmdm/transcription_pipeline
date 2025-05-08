@@ -1,20 +1,19 @@
+from enum import Enum
+
 from sqlalchemy import (
-    create_engine,
     Column,
-    Integer,
-    String,
-    DateTime,
-    Text,
     Float,
     ForeignKey,
-    JSON,
-    LargeBinary,
+    Integer,
+    String,
 )
-from enum import Enum
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy import Enum as SQLAlchemyEnum  # Renamed to avoid conflict
-from sqlalchemy.orm import relationship, declarative_base
-from sqlalchemy.sql import func
-import datetime
+from sqlalchemy.orm import DeclarativeBase, relationship
+
+
+class Base(DeclarativeBase):
+    pass
 
 
 class TrackProcessingStatus(str, Enum):
@@ -24,20 +23,18 @@ class TrackProcessingStatus(str, Enum):
     EMBEDDED = "EMBEDDED"
 
 
-Base = declarative_base()
-
-
 class Track(Base):
     __tablename__ = "tracks"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    track_uuid = Column(PG_UUID(True), unique=True, nullable=False, index=True)
     title = Column(String(512), nullable=False)
     webpage_url = Column(String(1024), nullable=False, unique=True, index=True)
     download_url = Column(String(1024), nullable=False, index=True)
     playlist_url = Column(String(1024), nullable=True, index=True)
     track_number_in_playlist = Column(Integer, nullable=True)
     uploader = Column(String(255), nullable=True)  # Added uploader field
-    status = Column(
+    status: Column[TrackProcessingStatus] = Column(
         SQLAlchemyEnum(TrackProcessingStatus, name="track_processing_status_enum"),
         nullable=False,
         default=TrackProcessingStatus.PENDING,
@@ -46,7 +43,9 @@ class Track(Base):
     duration_seconds = Column(Float, nullable=True)
     audio_file_path = Column(String(1024), nullable=True)
     transcripts = relationship(
-        "Transcript", back_populates="track", cascade="all, delete-orphan"
+        "Transcript",
+        back_populates="track",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self):
@@ -58,17 +57,12 @@ class Transcript(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     track_id = Column(
-        Integer, ForeignKey("tracks.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer,
+        ForeignKey("tracks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     track = relationship("Track", back_populates="transcripts")
 
     def __repr__(self):
-        return f"<Transcription(id={self.id}, track_id={self.track_id}, language='{self.language_code}')>"
-
-
-# To create these tables in your database, you would typically use something like:
-# from sqlalchemy import create_engine
-# from config import settings # Assuming your DATABASE_URL is in settings
-#
-# engine = create_engine(settings.DATABASE_URL)
-# Base.metadata.create_all(bind=engine)
+        return f"<Transcription(id={self.id}, track_id={self.track_id}')>"

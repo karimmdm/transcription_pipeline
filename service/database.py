@@ -1,16 +1,19 @@
 from abc import ABC, abstractmethod
-from sqlalchemy import Engine
-from typing import List
-import dtos
+import uuid
+
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
+
+import schemas
 
 
 class IDatabase(ABC):
     @abstractmethod
-    def add_processed_webpage_urls(self, urls: List[str]):
+    def add_processed_webpage_urls(self, urls: list[str]):
         pass
 
     @abstractmethod
-    def get_processed_webpage_urls(self) -> List[str]:
+    def get_processed_webpage_urls(self) -> list[str]:
         pass
 
     @abstractmethod
@@ -22,24 +25,24 @@ class PostgresDatabase(IDatabase):
     def __init__(self, engine: Engine):
         self.engine = engine
 
-    def add_processed_webpage_urls(self, urls: List[str]):
-        with self.engine.connect() as connection:
-            for url in urls:
-                connection.execute(
-                    "INSERT INTO processed_urls (webpage_url) VALUES (%s) ON CONFLICT DO NOTHING",
-                    (url,),
-                )
+    def add_processed_webpage_urls(self, urls: list[str]):
+        pass
 
-    def get_processed_webpage_urls(self) -> List[str]:
-        with self.engine.connect() as connection:
-            result = connection.execute("SELECT webpage_url FROM processed_urls")
-            return [row[0] for row in result.fetchall()]
+    def get_processed_webpage_urls(self) -> list[str]:
+        return []
 
     def track_is_transcribed(self, webpage_url: str) -> bool:
+        track_uuid = uuid.uuid5(uuid.NAMESPACE_URL, webpage_url)
         with self.engine.connect() as connection:
-            result = connection.execute(
-                "SELECT COUNT(*) FROM tracks WHERE webpage_url = %s AND status = %s",
-                (webpage_url, dtos.TrackProcessingStatus.TRANSCRIBED.value),
+            stmt = text(
+                "SELECT COUNT(*) FROM tracks WHERE track_uuid = :track_uuid AND status = :status"
             )
-            count = result.scalar()
-            return count > 0
+            result = connection.execute(
+                stmt,
+                {
+                    "track_uuid": track_uuid,
+                    "status": schemas.TrackProcessingStatus.TRANSCRIBED.value,
+                },
+            )
+            count = result.scalar_one_or_none()  # Use scalar_one_or_none for safety
+            return count is not None and count > 0

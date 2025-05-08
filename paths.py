@@ -1,7 +1,6 @@
 import logging
 from pathlib import Path
 
-
 logger = logging.getLogger(__name__)
 
 # Root of the project (adjust if needed)
@@ -13,10 +12,7 @@ AUDIO_DIR = TMP_DIR / "audio"
 
 
 def init_tmp_paths():
-    """
-    Initializes the required directories by creating them if they don't exist.
-    """
-
+    """Initializes the required directories by creating them if they don't exist."""
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     logger.debug(f"Temporary directory initialized at: {TMP_DIR}")
 

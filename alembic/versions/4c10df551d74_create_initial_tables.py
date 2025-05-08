@@ -1,8 +1,8 @@
 """create initial tables
 
-Revision ID: d5b5cf03cdc0
+Revision ID: 4c10df551d74
 Revises:
-Create Date: 2025-05-07 16:54:42.023570
+Create Date: 2025-05-08 10:15:25.971406
 
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "d5b5cf03cdc0"
+revision: str = "4c10df551d74"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -25,6 +25,7 @@ def upgrade() -> None:
     op.create_table(
         "tracks",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("track_uuid", sa.UUID(), nullable=False),
         sa.Column("title", sa.String(length=512), nullable=False),
         sa.Column("webpage_url", sa.String(length=1024), nullable=False),
         sa.Column("download_url", sa.String(length=1024), nullable=False),
@@ -54,6 +55,7 @@ def upgrade() -> None:
         op.f("ix_tracks_playlist_url"), "tracks", ["playlist_url"], unique=False
     )
     op.create_index(op.f("ix_tracks_status"), "tracks", ["status"], unique=False)
+    op.create_index(op.f("ix_tracks_track_uuid"), "tracks", ["track_uuid"], unique=True)
     op.create_index(
         op.f("ix_tracks_webpage_url"), "tracks", ["webpage_url"], unique=True
     )
@@ -78,6 +80,7 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_transcripts_id"), table_name="transcripts")
     op.drop_table("transcripts")
     op.drop_index(op.f("ix_tracks_webpage_url"), table_name="tracks")
+    op.drop_index(op.f("ix_tracks_track_uuid"), table_name="tracks")
     op.drop_index(op.f("ix_tracks_status"), table_name="tracks")
     op.drop_index(op.f("ix_tracks_playlist_url"), table_name="tracks")
     op.drop_index(op.f("ix_tracks_id"), table_name="tracks")

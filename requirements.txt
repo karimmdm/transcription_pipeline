@@ -5,6 +5,8 @@ yt-dlp  # For downloading YouTube / Soundcloud videos
 ruff
 pydantic-settings
 pytest
+mypy
 alembic
-sqlalchemy
+SQLAlchemy
 psycopg2
+types-psycopg2 # Type stubs for psycopg2
