@@ -29,10 +29,25 @@ class TrackBase(BaseModel):
     duration_seconds: Optional[float] = None
 
 
-class Track(TrackBase):
+class TrackDownloaded(TrackBase):
     id: int
-    audio_file_path: Optional[str] = None
+    audio_file_path: str
+
+    class Config:
+        orm_mode = True  # Allows Pydantic to work with ORM models (SQLAlchemy)
+
+
+class TrackTranscribed(TrackDownloaded):
     transcriptions: List[Transcript] = []
+    status: TrackProcessingStatus = TrackProcessingStatus.TRANSCRIBED
+
+    class Config:
+        orm_mode = True  # Allows Pydantic to work with ORM models (SQLAlchemy)
+
+
+class TrackEmbedded(TrackTranscribed):
+    embedding: Optional[List[float]] = None
+    status: TrackProcessingStatus = TrackProcessingStatus.EMBEDDED
 
     class Config:
         orm_mode = True  # Allows Pydantic to work with ORM models (SQLAlchemy)

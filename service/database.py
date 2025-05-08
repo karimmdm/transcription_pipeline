@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from sqlalchemy.engine import Engine
+from sqlalchemy import Engine
 from typing import List
 import dtos
 

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
+    def __init__(self, **values):
+        super().__init__(**values)
+
 
 def get_settings() -> Settings:
     """
