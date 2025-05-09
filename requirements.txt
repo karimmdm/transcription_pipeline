@@ -1,7 +1,7 @@
 whisperx
-librosa  # Include for audio processing, if needed
-ffmpeg  # For audio manipulation, if needed
-yt-dlp  # For downloading YouTube / Soundcloud videos
+librosa  
+ffmpeg  
+yt-dlp  
 ruff
 pydantic-settings
 pytest
@@ -9,4 +9,4 @@ mypy
 alembic
 SQLAlchemy
 psycopg2
-types-psycopg2 # Type stubs for psycopg2
+types-psycopg2

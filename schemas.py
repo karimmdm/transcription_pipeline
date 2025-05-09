@@ -1,16 +1,9 @@
+import uuid
 from enum import Enum
 from typing import Optional, List
-import uuid  # For uuid.UUID type
-
+from pathlib import Path
 from pydantic import BaseModel, HttpUrl
-
-
-class TranscriptBase(BaseModel):
-    pass
-
-
-class Transcript(TranscriptBase):
-    pass
+from whisperx.types import AlignedTranscriptionResult
 
 
 class TrackProcessingStatus(str, Enum):
@@ -20,10 +13,26 @@ class TrackProcessingStatus(str, Enum):
     EMBEDDED = "EMBEDDED"
 
 
+class Transcript(BaseModel):
+    # Core identifiers
+    uuid: uuid.UUID
+    id: Optional[int] = None
+
+    # Core metadata
+    title: str
+    webpage_url: HttpUrl
+
+    # Core Transcript Data
+    aligned_result: AlignedTranscriptionResult
+    embedding: List[float] = []
+
+    model_config = {"from_attributes": True}
+
+
 class Track(BaseModel):
     # Core identifiers
     uuid: uuid.UUID
-    id: Optional[int] = None  # Database ID, optional until saved
+    id: Optional[int] = None
 
     # Core metadata
     title: str
@@ -32,18 +41,14 @@ class Track(BaseModel):
     uploader: Optional[str] = None
     duration_seconds: Optional[float] = None
 
-    # Playlist context (optional)
+    # Playlist context
     playlist_title: Optional[str] = None
     playlist_url: Optional[HttpUrl] = None
     track_number_in_playlist: Optional[int] = None
 
-    # Pipeline status and stage-specific data
+    # Piplene specific data
     status: TrackProcessingStatus = TrackProcessingStatus.PENDING
-    audio_file_path: Optional[str] = None
-    transcriptions: Optional[List[Transcript]] = (
-        None  # Or list[Transcript] for Python 3.9+
-    )
-    embedding: Optional[List[float]] = None  # Or list[float] for Python 3.9+
+    audio_file_path: Optional[Path] = None
+    transcripts: List[Transcript] = []
 
-    # Pydantic V2 style for ORM mode (reading from SQLAlchemy model attributes)
     model_config = {"from_attributes": True}

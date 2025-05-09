@@ -1,8 +1,8 @@
-"""create initial tables
+"""initial migration
 
-Revision ID: 4c10df551d74
+Revision ID: cd3e65702b00
 Revises:
-Create Date: 2025-05-08 10:15:25.971406
+Create Date: 2025-05-09 15:36:42.710643
 
 """
 
@@ -10,10 +10,10 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "4c10df551d74"
+revision: str = "cd3e65702b00"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -63,6 +63,12 @@ def upgrade() -> None:
         "transcripts",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("track_id", sa.Integer(), nullable=False),
+        sa.Column(
+            "aligned_segments_data",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+        ),
+        sa.Column("embeddings", postgresql.ARRAY(sa.Float()), nullable=True),
         sa.ForeignKeyConstraint(["track_id"], ["tracks.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )

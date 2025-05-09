@@ -1,12 +1,12 @@
 import logging
-import schemas
 import uuid
 from typing import Any, Optional
 from pydantic import HttpUrl
 from abc import ABC, abstractmethod
 from yt_dlp import YoutubeDL
 from pathlib import Path
-from service.database import IDatabase
+from service.database_handler import IDatabase
+from schemas import Track, TrackProcessingStatus
 
 
 class IDownloaderService(ABC):
@@ -27,7 +27,7 @@ class IDownloaderService(ABC):
         self.base_ydl_opts = {
             "quiet": True,
             "ignoreerrors": True,
-            "format": "bestaudio/best",  # Select the best audio stream
+            "format": "bestaudio/best",
             "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "wav"}],
         }
         if ydl_opts_override:
@@ -35,12 +35,16 @@ class IDownloaderService(ABC):
         self.database_service = database_service
         self.save_directory = save_directory
 
+    def unique_audio_file_path(self, webpage_url: HttpUrl) -> Path:
+        return Path(
+            self.save_directory
+            / f"{uuid.uuid5(uuid.NAMESPACE_URL, str(webpage_url))}.wav"
+        )
+
     @abstractmethod
-    def get_playlist_tracks_metadata(
-        self, playlist_url: HttpUrl
-    ) -> list[schemas.Track]:
+    def download_playlist(self, playlist_url: HttpUrl) -> list[Track]:
         """
-        Retrieves the list of audio URLs, titles, and indices from a playlist.
+        Downloads all tracks from a given playlist using yt-dlp.
 
         Args:
             playlist_url: The URL of the playlist.
@@ -48,28 +52,14 @@ class IDownloaderService(ABC):
         Returns:
             A list of Track objects.
         """
-        pass
 
     @abstractmethod
-    def get_track_metadata(self, track_url: HttpUrl) -> Optional[schemas.Track]:
-        """
-        Retrieves the metadata for a single track.
-
-        Args:
-            track_url: The URL of the track.
-
-        Returns:
-            A Track object if found, None otherwise.
-        """
-        pass
-
-    @abstractmethod
-    def download_track(self, track: schemas.Track) -> schemas.Track:
+    def download_track(self, webpage_url: HttpUrl) -> Track:
         """
         Downloads a single track from a given URL using yt-dlp.
 
         Args:
-            track: A TrackBase object containing information about the track to be downloaded.
+            webpage_url: The URL of the track.
             output_dir: The directory to save the downloaded file.
 
         Returns:
@@ -91,9 +81,83 @@ class SoundcloudDownloaderService(IDownloaderService):
             ydl_opts_override=ydl_opts_override,
         )
 
-    def get_playlist_tracks_metadata(
-        self, playlist_url: HttpUrl
-    ) -> list[schemas.Track]:
+    def _get_track_metadata(self, track_url: HttpUrl) -> Optional[Track]:
+        self.logger.debug(f"Retrieving metadata for track: {track_url}")
+        fetch_opts = self.base_ydl_opts.copy()
+        with YoutubeDL(fetch_opts) as ydl:
+            info: Optional[dict] = ydl.extract_info(str(track_url), download=False)
+
+            if not info:
+                self.logger.warning(f"No info found for track: {track_url}")
+                raise ValueError(f"Could not extract metadata for track: {track_url}")
+
+            track_webpage_url: Optional[str] = info.get("webpage_url")
+            track_download_url: Optional[str] = info.get("url")
+
+            if not track_webpage_url or not track_download_url:
+                self.logger.error(
+                    f"Essential metadata (webpage_url or download_url) missing for {track_url}"
+                )
+                raise ValueError(f"Essential metadata missing for track: {track_url}")
+
+            # TODO: move this check into main.py
+            if self.database_service.track_is_transcribed(
+                webpage_url=track_webpage_url
+            ):
+                self.logger.debug(f"Track @ {track_webpage_url} is lready transcribed.")
+                return None
+
+            track_data = Track(
+                uuid=uuid.uuid5(uuid.NAMESPACE_URL, track_webpage_url),
+                title=info.get("title", "Unknown Title"),
+                webpage_url=HttpUrl(track_webpage_url),
+                download_url=HttpUrl(track_download_url),
+                uploader=info.get("uploader"),
+                duration_seconds=info.get("duration"),
+                status=TrackProcessingStatus.PENDING,
+            )
+            self.logger.debug(
+                f"Parsed track {track_data.title} - (URL: {track_data.webpage_url} - UUID: {track_data.uuid})"
+            )
+            return track_data
+
+    def _download_track(self, track: Track) -> Track:
+        output_file_path = self.unique_audio_file_path(track.webpage_url)
+        if output_file_path.exists():
+            self.logger.debug(
+                f"Audio file for {track.title} already exists at {output_file_path}"
+            )
+            track.audio_file_path = output_file_path
+            track.status = TrackProcessingStatus.DOWNLOADED
+            return track
+
+        download_opts: dict[str, Any] = self.base_ydl_opts.copy()
+        output_template_base = str(output_file_path.with_suffix(""))
+        download_opts["outtmpl"] = output_template_base
+        with YoutubeDL(download_opts) as ydl:
+            self.logger.debug(
+                f"Attempting to download track: {track.title} @ {track.webpage_url}. "
+                f"Expected final output: {output_file_path}. "
+                f"yt-dlp base template: {output_template_base}"
+            )
+            ydl.download([str(track.download_url)])
+
+        if output_file_path.exists():
+            track.audio_file_path = output_file_path
+            track.status = TrackProcessingStatus.DOWNLOADED
+            self.logger.info(
+                f"Successfully downloaded and processed track: {track.title} to {track.audio_file_path}"
+            )
+        else:
+            self.logger.error(
+                f"Expected audio file not found at {output_file_path} after download attempt for {track.title}"
+            )
+            raise FileNotFoundError(
+                f"Expected audio file not found at {output_file_path} after download for {track.title}"
+            )
+        return track
+
+    def _get_playlist_tracks_metadata(self, playlist_url: HttpUrl) -> list[Track]:
         self.logger.debug(f"Retrieving tracks from playlist: {playlist_url}")
 
         fetch_opts = self.base_ydl_opts.copy()
@@ -113,7 +177,7 @@ class SoundcloudDownloaderService(IDownloaderService):
                 return []
 
             self.logger.debug(f"Retrieved {len(entries)} entries from playlist.")
-            playlist_track_metadatas: list[schemas.Track] = []
+            playlist_track_metadatas: list[Track] = []
             playlist_title: Optional[str] = info.get("title")
             for index, entry in enumerate(entries):
                 title: str = entry.get("title", f"Unknown Title Track {index + 1}")
@@ -128,6 +192,7 @@ class SoundcloudDownloaderService(IDownloaderService):
                     )
                     continue
 
+                # TODO: Move this check into into main.py
                 if self.database_service.track_is_transcribed(
                     webpage_url=track_webpage_url
                 ):
@@ -136,8 +201,7 @@ class SoundcloudDownloaderService(IDownloaderService):
                     )
                     continue
 
-                # Instantiate the consolidated Track model
-                track = schemas.Track(
+                track = Track(
                     uuid=uuid.uuid5(uuid.NAMESPACE_URL, track_webpage_url),
                     title=title,
                     webpage_url=HttpUrl(track_webpage_url),
@@ -146,7 +210,7 @@ class SoundcloudDownloaderService(IDownloaderService):
                     duration_seconds=duration,
                     track_number_in_playlist=index + 1,
                     playlist_url=playlist_url,
-                    status=schemas.TrackProcessingStatus.PENDING,  # Explicitly set initial status
+                    status=TrackProcessingStatus.PENDING,
                 )
                 if playlist_title:
                     track.playlist_title = playlist_title
@@ -156,56 +220,14 @@ class SoundcloudDownloaderService(IDownloaderService):
                 )
             return playlist_track_metadatas
 
-    def get_track_metadata(self, track_url: HttpUrl) -> Optional[schemas.Track]:
-        self.logger.debug(f"Retrieving metadata for track: {track_url}")
-        fetch_opts = self.base_ydl_opts.copy()
-        with YoutubeDL(fetch_opts) as ydl:
-            info: Optional[dict] = ydl.extract_info(str(track_url), download=False)
+    def download_track(self, webpage_url: HttpUrl) -> Track:
+        track = self._get_track_metadata(webpage_url)
+        if not track:
+            raise Exception(f"Could not download track: {webpage_url}")
+        return self._download_track(track)
 
-            if not info:
-                self.logger.warning(f"No info found for track: {track_url}")
-                raise ValueError(f"Could not extract metadata for track: {track_url}")
-
-            track_webpage_url: Optional[str] = info.get("webpage_url")
-            track_download_url: Optional[str] = info.get("url")
-
-            if not track_webpage_url or not track_download_url:
-                self.logger.error(
-                    f"Essential metadata (webpage_url or download_url) missing for {track_url}"
-                )
-                raise ValueError(f"Essential metadata missing for track: {track_url}")
-
-            if self.database_service.track_is_transcribed(
-                webpage_url=track_webpage_url
-            ):
-                self.logger.debug(f"Track @ {track_webpage_url} is lready transcribed.")
-                return None
-
-            track_data = schemas.Track(
-                uuid=uuid.uuid5(uuid.NAMESPACE_URL, track_webpage_url),
-                title=info.get("title", "Unknown Title"),
-                webpage_url=HttpUrl(track_webpage_url),
-                download_url=HttpUrl(track_download_url),
-                uploader=info.get("uploader"),
-                duration_seconds=info.get("duration"),
-                status=schemas.TrackProcessingStatus.PENDING,
-            )
-            self.logger.debug(
-                f"Parsed track {track_data.title} - (URL: {track_data.webpage_url} - UUID: {track_data.uuid})"
-            )
-            return track_data
-
-    def download_track(self, track: schemas.Track) -> schemas.Track:
-        self.logger.debug(f"Downloading track: {track.title} @ {track.webpage_url}")
-        download_opts: dict[str, Any] = self.base_ydl_opts.copy()
-        output_template = str(self.save_directory / f"{track.uuid}.%(ext)s")
-        download_opts["outtmpl"] = output_template
-        download_opts["quiet"] = True
-        with YoutubeDL(download_opts) as ydl:
-            ydl.download([str(track.download_url)])
-
-        track.audio_file_path = str(
-            self.save_directory / f"{track.uuid}.wav"
-        )  # Assuming wav
-        track.status = schemas.TrackProcessingStatus.DOWNLOADED
-        return track
+    def download_playlist(self, playlist_url: HttpUrl) -> list[Track]:
+        tracks = self._get_playlist_tracks_metadata(playlist_url)
+        for track in tracks:
+            self._download_track(track)
+        return tracks
