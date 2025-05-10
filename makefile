@@ -38,7 +38,7 @@ setup:	init-dirs
 	$(VENV_DIR)/bin/$(PIP) install -r $(REQUIREMENTS)
 
 run:
-	@echo "Running transcription script with environment variables..."
+	@echo "Running..."
 	export PRODUCTION=$(PRODUCTION)
 	export LOG_LEVEL=$(LOG_LEVEL)
 	export LOG_FILE=$(LOG_FILE)
@@ -71,6 +71,10 @@ start-postgres:
 		-e POSTGRES_DB=$(POSTGRES_DB) \
 		-p $(POSTGRES_PORT):5432 \
 		-d $(POSTGRES_IMAGE)
+
+migration:
+	@echo "Running database migrations..."
+	$(VENV_DIR)/bin/alembic revision --autogenerate
 	$(VENV_DIR)/bin/alembic upgrade head
 
 stop-postgres:

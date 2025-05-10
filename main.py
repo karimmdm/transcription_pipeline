@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -29,9 +28,10 @@ def run(
         if track:
             logger.debug(f"Processing track: {track.title} @ {track.webpage_url}")
             track_transcribed, transcript = transcriber_service.transcribe_audio(
-                track=track, save_to_disk=True
+                track=track, save_to_disk=True,
             )
-
+            database_service.insert_track(track_transcribed)
+            database_service.insert_transcript(transcript)
 
 if __name__ == "__main__":
     logging.basicConfig(
